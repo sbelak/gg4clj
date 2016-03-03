@@ -7,7 +7,9 @@
            (java.util UUID))
   (:require [clojure.java.shell :as shell]
             [clojure.string :as string]
-            [gorilla-renderable.core :as render]))
+            [clojure.walk :as walk]
+            [gorilla-renderable.core :as render]
+            [clojure.xml :as xml]))
 
 
 ;; * Functions for building R code *
@@ -94,20 +96,41 @@
      command
      [:ggsave {:filename filepath :width width :height height}]]))
 
+(defn- fresh-ids
+  [svg]
+  (->> svg
+       (tree-seq coll? identity)
+       (filter map?)
+       (keep :id)
+       (map (fn [new old]
+              {old new
+               (str "#" old) (str "#" new)
+               (format "url(#%s)" old) (format "url(#%s)" new)})
+            (repeatedly #(str (UUID/randomUUID))))
+       (apply merge)))
+
 (defn- mangle-ids
+  [svg]
   "ggplot produces SVGs with elements that have id attributes. These ids are unique within each plot, but are
   generated in such a way that they clash when there's more than one plot in a document. This function takes
   an SVG string and replaces the ids with globally unique ids. It returns a string.
 
-  This is a workaround which could be removed if there was a way to generate better SVG in R. Also:
-  http://stackoverflow.com/questions/1732348/regex-match-open-tags-except-xhtml-self-contained-tags/1732454#1732454"
-  [svg]
-  (let [ids (map last (re-seq #"id=\"([^\"]*)\"" svg))
-        id-map (zipmap ids (repeatedly (count ids) #(str (UUID/randomUUID))))]
-    (-> svg
-        (string/replace #"id=\"([^\"]*)\"" #(str "id=\"" (get id-map (last %)) "\""))
-        (string/replace #"\"#([^\"]*)\"" #(str "\"#" (get id-map (last %)) "\""))
-        (string/replace #"url\(#([^\"]*)\)" #(str "url(#" (get id-map (last %)) ")")))))
+  This is a workaround which could be removed if there was a way to generate better SVG in R."
+  (let [svg (xml/parse (java.io.ByteArrayInputStream. (.getBytes svg)))
+        smap (fresh-ids svg)
+        mangle (fn [x]
+                 (if (map? x)
+                   (into {}
+                     (for [[k v] x]
+                       [k (if (or (= :id k)
+                                  (and (string? v)
+                                       (or (string/starts-with? v "#")
+                                           (string/starts-with? v "url(#"))))
+                            (smap v)
+                            v)]))
+                   x))]
+    (with-out-str
+      (xml/emit (walk/prewalk mangle svg)))))
 
 (defn render
   "Takes a ggplot2 command, expressed in the Clojure representation of R code, and returns the plot rendered to SVG
