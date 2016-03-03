@@ -124,8 +124,8 @@
                      (for [[k v] x]
                        [k (if (or (= :id k)
                                   (and (string? v)
-                                       (or (string/starts-with? v "#")
-                                           (string/starts-with? v "url(#"))))
+                                       (or (.startsWith v "#")
+                                           (.startsWith v "url(#"))))
                             (smap v)
                             v)]))
                    x))]
