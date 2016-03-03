@@ -110,12 +110,12 @@
        (apply merge)))
 
 (defn- mangle-ids
-  [svg]
   "ggplot produces SVGs with elements that have id attributes. These ids are unique within each plot, but are
   generated in such a way that they clash when there's more than one plot in a document. This function takes
   an SVG string and replaces the ids with globally unique ids. It returns a string.
 
   This is a workaround which could be removed if there was a way to generate better SVG in R."
+  [svg]
   (let [svg (xml/parse (java.io.ByteArrayInputStream. (.getBytes svg)))
         smap (fresh-ids svg)
         mangle (fn [x]
